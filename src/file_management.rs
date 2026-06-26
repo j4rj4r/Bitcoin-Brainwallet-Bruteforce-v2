@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -57,8 +58,9 @@ pub fn read_dictionary_str(contents: &'static str) -> impl Iterator<Item = Strin
     dedup_lines(io::Cursor::new(contents.as_bytes()))
 }
 
-/// A found WIF is a real, spendable private key - keep the file readable by the
-/// owner only, regardless of the process umask.
+/// A found WIF is a real, spendable private key - on Unix, keep the file
+/// readable by the owner only, regardless of the process umask. Windows has no
+/// equivalent of POSIX mode bits, so this is a no-op there.
 pub fn write_discovery(
     output_file: &Path,
     address: &str,
@@ -72,12 +74,13 @@ pub fn write_discovery(
         "wif": wif,
         "balance": balance,
     });
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(0o600)
-        .open(output_file)?;
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(output_file)?;
     writeln!(file, "{entry}")?;
+    #[cfg(unix)]
     fs::set_permissions(output_file, fs::Permissions::from_mode(0o600))?;
     Ok(())
 }
@@ -179,8 +182,11 @@ mod tests {
         assert_eq!(parsed["password"], "pass|word\nwith\"quotes");
         assert_eq!(parsed["address"], "1Addr");
 
-        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
+        #[cfg(unix)]
+        {
+            let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
     }
 
     #[test]
