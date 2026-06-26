@@ -1,0 +1,42 @@
+[package]
+name = "brainwallet-bruteforce"
+version = "2.0.0"
+edition = "2026"
+description = "Brute-force Bitcoin brainwallets from a wordlist against a local balance index."
+license = "MIT"
+authors = ["Jarod CAJNA"]
+repository = "https://github.com/j4rj4r/Bitcoin-Brainwallet-Bruteforce-v2"
+
+[[bin]]
+name = "brainwallet-bruteforce"
+path = "src/main.rs"
+
+[lib]
+name = "brainwallet_bruteforce"
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[dependencies]
+anyhow = "1.0.102"
+bs58 = { version = "0.5.1", features = ["check"] }
+clap = { version = "4.6.1", features = ["derive"] }
+flate2 = "1.1.9"
+indicatif = "0.18.4"
+pbkdf2 = { version = "0.13.0", features = ["sha2"] }
+rayon = "1.12.0"
+ripemd = "0.2.0"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+scrypt = "0.12.0"
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+sha2 = "0.11.0"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+tempfile = "3.27.0"

@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match Cargo.toml version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          cargo_version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$tag_version" != "$cargo_version" ]; then
+            echo "Tag v$tag_version does not match Cargo.toml version $cargo_version"
+            exit 1
+          fi
+
+  build:
+    needs: check-version
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: brainwallet-bruteforce-linux-x86_64.tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_name: brainwallet-bruteforce-macos-x86_64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: brainwallet-bruteforce-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: tar -czf ${{ matrix.asset_name }} -C target/${{ matrix.target }}/release brainwallet-bruteforce
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/brainwallet-bruteforce.exe -DestinationPath ${{ matrix.asset_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

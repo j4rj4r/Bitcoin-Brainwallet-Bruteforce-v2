@@ -1,0 +1,8 @@
+output.txt
+*.progress.json
+*.sqlite
+blockchair_bitcoin_addresses_latest.tsv.gz
+
+# Added by cargo
+
+/target
