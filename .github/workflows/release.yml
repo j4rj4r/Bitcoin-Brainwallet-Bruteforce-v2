@@ -45,7 +45,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Build (retries on transient registry/network errors)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            cargo build --release --target ${{ matrix.target }} && exit 0
+            echo "Attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          exit 1
 
       - name: Package (unix)
         if: runner.os != 'Windows'
