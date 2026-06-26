@@ -8,8 +8,13 @@ use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use rusqlite::{Connection, OpenFlags, params};
 
-const CREATE_TABLE_SQL: &str =
-    "CREATE TABLE balances (address TEXT PRIMARY KEY, balance_satoshi INTEGER NOT NULL)";
+// WITHOUT ROWID: lookups are by `address` only, never by rowid, so storing rows
+// directly in the primary-key b-tree avoids the extra rowid-index indirection a
+// normal SQLite table would pay on every lookup.
+const CREATE_TABLE_SQL: &str = "CREATE TABLE balances (\
+    address TEXT PRIMARY KEY, \
+    balance_satoshi INTEGER NOT NULL\
+) WITHOUT ROWID";
 const COMMIT_EVERY: usize = 50_000;
 pub const QUERY_CHUNK_SIZE: usize = 500;
 
@@ -21,6 +26,10 @@ pub const QUERY_CHUNK_SIZE: usize = 500;
 /// full dump. Returns the number of addresses indexed.
 pub fn build_database(dump_path: &Path, db_path: &Path) -> Result<usize> {
     let mut connection = Connection::open(db_path)?;
+    // The index is a disposable, rebuildable artifact (re-run build-db against the
+    // same dump if the process dies mid-build), so durability isn't worth the fsync
+    // cost of the default synchronous/journal settings while loading millions of rows.
+    connection.execute_batch("PRAGMA synchronous = OFF; PRAGMA journal_mode = MEMORY;")?;
     connection.execute_batch(&format!(
         "DROP TABLE IF EXISTS balances; {CREATE_TABLE_SQL}"
     ))?;
@@ -89,8 +98,13 @@ pub struct OfflineBalanceChecker;
 impl OfflineBalanceChecker {
     /// Opens a fresh read-only connection to `db_path`. Cheap enough to call once per
     /// worker thread - `rusqlite::Connection` is `!Sync`, so each thread needs its own.
+    ///
+    /// Addresses are SHA256-derived, so lookups have no locality to exploit - a larger
+    /// page cache and memory-mapped I/O both just make each random point lookup cheaper.
     pub fn open_connection(db_path: &Path) -> rusqlite::Result<Connection> {
-        Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        let connection = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        connection.execute_batch("PRAGMA cache_size = -64000; PRAGMA mmap_size = 268435456;")?;
+        Ok(connection)
     }
 
     pub fn check<S: AsRef<str>>(
