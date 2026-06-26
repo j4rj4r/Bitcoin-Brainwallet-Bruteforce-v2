@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use indicatif::ProgressBar;
 use rayon::prelude::*;
 use rusqlite::Connection;
@@ -75,7 +75,7 @@ fn derive_chunk(
 /// Injectable balance source - lets tests substitute a fake lookup instead of a
 /// real SQLite index, the same way the Python tests monkeypatched `balance_checker.check`.
 pub trait BalanceLookup: Send + Sync {
-    fn check_chunk(&self, addresses: &[&str]) -> HashMap<String, u64>;
+    fn check_chunk(&self, addresses: &[&str]) -> Result<HashMap<String, u64>>;
 }
 
 /// Looks up balances in a local SQLite index. `rusqlite::Connection` is `!Sync`, so
@@ -97,18 +97,20 @@ thread_local! {
 }
 
 impl BalanceLookup for SqliteBalanceLookup {
-    fn check_chunk(&self, addresses: &[&str]) -> HashMap<String, u64> {
-        THREAD_CONNECTION.with(|cell| {
+    fn check_chunk(&self, addresses: &[&str]) -> Result<HashMap<String, u64>> {
+        THREAD_CONNECTION.with(|cell| -> Result<HashMap<String, u64>> {
             let mut slot = cell.borrow_mut();
             let needs_open = !matches!(&*slot, Some((path, _)) if path == &self.db_path);
             if needs_open {
                 let connection = OfflineBalanceChecker::open_connection(&self.db_path)
-                    .expect("offline balance index could not be opened");
+                    .with_context(|| {
+                        format!("could not open balance index {}", self.db_path.display())
+                    })?;
                 *slot = Some((self.db_path.clone(), connection));
             }
             let (_, connection) = slot.as_ref().unwrap();
             OfflineBalanceChecker::check(connection, addresses, QUERY_CHUNK_SIZE)
-                .expect("offline balance lookup query failed")
+                .context("offline balance lookup query failed")
         })
     }
 }
@@ -167,12 +169,13 @@ pub fn launch(
             .collect();
 
         let (balances, next_candidates) = if next_chunk_words.is_empty() {
-            (balance_lookup.check_chunk(&addresses), Vec::new())
+            (balance_lookup.check_chunk(&addresses)?, Vec::new())
         } else {
-            rayon::join(
+            let (balances, next_candidates) = rayon::join(
                 || balance_lookup.check_chunk(&addresses),
                 || derive_chunk(&next_chunk_words, secp, &config.scheme, &config.modes),
-            )
+            );
+            (balances?, next_candidates)
         };
 
         if !current_candidates.is_empty() {
@@ -240,15 +243,23 @@ mod tests {
     }
 
     impl BalanceLookup for FakeLookup {
-        fn check_chunk(&self, addresses: &[&str]) -> HashMap<String, u64> {
+        fn check_chunk(&self, addresses: &[&str]) -> Result<HashMap<String, u64>> {
             self.queried
                 .lock()
                 .unwrap()
                 .extend(addresses.iter().map(|a| a.to_string()));
-            addresses
+            Ok(addresses
                 .iter()
                 .filter_map(|a| self.balances.get(*a).map(|&b| (a.to_string(), b)))
-                .collect()
+                .collect())
+        }
+    }
+
+    struct FailingLookup;
+
+    impl BalanceLookup for FailingLookup {
+        fn check_chunk(&self, _addresses: &[&str]) -> Result<HashMap<String, u64>> {
+            anyhow::bail!("simulated balance index failure")
         }
     }
 
@@ -376,5 +387,29 @@ mod tests {
         )
         .unwrap();
         assert!(outcome.discoveries.is_empty());
+    }
+
+    #[test]
+    fn balance_lookup_failure_propagates_as_error_not_a_panic() {
+        let secp = Secp256k1::new();
+        let lookup = FailingLookup;
+        let dir = tempfile::tempdir().unwrap();
+        let output_file = dir.path().join("output.txt");
+        let progress_file = dir.path().join("output.txt.progress.json");
+        let words = vec!["a".to_string()].into_iter();
+
+        let pbar = ProgressBar::hidden();
+        let result = launch(
+            words,
+            &output_file,
+            &progress_file,
+            None,
+            &lookup,
+            &test_config(),
+            &secp,
+            &pbar,
+        );
+
+        assert!(result.is_err());
     }
 }
