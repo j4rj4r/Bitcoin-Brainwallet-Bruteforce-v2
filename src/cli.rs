@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use secp256k1::Secp256k1;
@@ -183,7 +183,9 @@ fn run_scan(args: ScanArgs) -> Result<()> {
 
     let mut words = dictionary_words(&args.input)?;
     if args.mutate {
-        println!("Mutation rules: ON (case, leetspeak, digit/year suffixes - expect many more candidates)");
+        println!(
+            "Mutation rules: ON (case, leetspeak, digit/year suffixes - expect many more candidates)"
+        );
         words = Box::new(mutate::mutate_wordlist(words));
     }
 

@@ -1,7 +1,7 @@
 [package]
 name = "brainwallet-bruteforce"
 version = "2.0.0"
-edition = "2026"
+edition = "2024"
 description = "Brute-force Bitcoin brainwallets from a wordlist against a local balance index."
 license = "MIT"
 authors = ["Jarod CAJNA"]

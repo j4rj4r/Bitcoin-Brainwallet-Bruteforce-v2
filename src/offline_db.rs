@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, params};
 
 const CREATE_TABLE_SQL: &str =
     "CREATE TABLE balances (address TEXT PRIMARY KEY, balance_satoshi INTEGER NOT NULL)";
@@ -120,8 +120,8 @@ impl OfflineBalanceChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::write::GzEncoder;
     use flate2::Compression;
+    use flate2::write::GzEncoder;
     use std::io::Write;
 
     fn write_gzip_dump(path: &Path, rows: &[(&str, &str)]) {

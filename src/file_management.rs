@@ -29,22 +29,24 @@ struct ProgressFile {
 /// (common in real-world dumps like rockyou.txt) doesn't abort the whole scan.
 fn dedup_lines<R: BufRead>(mut reader: R) -> impl Iterator<Item = String> {
     let mut seen: HashSet<String> = HashSet::new();
-    std::iter::from_fn(move || loop {
-        let mut buf = Vec::new();
-        let bytes_read = reader.read_until(b'\n', &mut buf).unwrap_or(0);
-        if bytes_read == 0 {
-            return None;
+    std::iter::from_fn(move || {
+        loop {
+            let mut buf = Vec::new();
+            let bytes_read = reader.read_until(b'\n', &mut buf).unwrap_or(0);
+            if bytes_read == 0 {
+                return None;
+            }
+            let word = String::from_utf8_lossy(&buf).trim().to_string();
+            if word.is_empty() || seen.contains(&word) {
+                continue;
+            }
+            seen.insert(word.clone());
+            return Some(word);
         }
-        let word = String::from_utf8_lossy(&buf).trim().to_string();
-        if word.is_empty() || seen.contains(&word) {
-            continue;
-        }
-        seen.insert(word.clone());
-        return Some(word);
     })
 }
 
-pub fn read_dictionary(path: &Path) -> io::Result<impl Iterator<Item = String>> {
+pub fn read_dictionary(path: &Path) -> io::Result<impl Iterator<Item = String> + use<>> {
     let file = File::open(path)?;
     Ok(dedup_lines(BufReader::new(file)))
 }

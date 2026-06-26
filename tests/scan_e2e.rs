@@ -2,8 +2,8 @@ use std::fs;
 use std::io::Write;
 
 use assert_cmd::Command;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 
 fn bin() -> Command {
     Command::cargo_bin("brainwallet-bruteforce").unwrap()

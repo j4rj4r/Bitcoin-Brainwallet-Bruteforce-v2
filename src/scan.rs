@@ -177,21 +177,22 @@ pub fn launch(
 
         if !current_candidates.is_empty() {
             for candidate in &current_candidates {
-                if let Some(&balance_satoshi) = balances.get(&candidate.address) {
-                    if balance_satoshi > 0 && !discoveries.contains(&candidate.address) {
-                        let wif = wif_from_private_key(&candidate.privkey, candidate.compressed);
-                        let balance_str = satoshi_to_btc_string(balance_satoshi);
-                        progress_bar.println(format!("{} : {balance_str} BTC", candidate.address));
-                        file_management::write_discovery(
-                            output_file,
-                            &candidate.address,
-                            &candidate.word,
-                            &wif,
-                            &balance_str,
-                        )?;
-                        discoveries.push(candidate.address.clone());
-                        balance_total_satoshi += balance_satoshi;
-                    }
+                if let Some(&balance_satoshi) = balances.get(&candidate.address)
+                    && balance_satoshi > 0
+                    && !discoveries.contains(&candidate.address)
+                {
+                    let wif = wif_from_private_key(&candidate.privkey, candidate.compressed);
+                    let balance_str = satoshi_to_btc_string(balance_satoshi);
+                    progress_bar.println(format!("{} : {balance_str} BTC", candidate.address));
+                    file_management::write_discovery(
+                        output_file,
+                        &candidate.address,
+                        &candidate.word,
+                        &wif,
+                        &balance_str,
+                    )?;
+                    discoveries.push(candidate.address.clone());
+                    balance_total_satoshi += balance_satoshi;
                 }
             }
 
